@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: auth-payment-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:auth_payment_db}
+    username: ${DB_USERNAME:change_me}
+    password: ${DB_PASSWORD:change_me}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: AuthPaymentHikariPool
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 600000
+      connection-timeout: 30000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    connection-timeout: 5000
+    listener:
+      simple:
+        retry:
+          enabled: true
+          initial-interval: 1000
+          multiplier: 2.0
+          max-retries: 3
+
+jwt:
+  secret: ${JWT_SECRET:change_me}          # Generate with: openssl rand -base64 64
+  token-expiration: ${JWT_EXPIRATION:300000}          # 5 minutes
+  refresh-token-expiration: ${REFRESH_JWT_EXPIRATION:86400000} # 24 hours
+
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:sk_test_...}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_...}
+
+server:
+  port: ${SERVER_PORT:8081}

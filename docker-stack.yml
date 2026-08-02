@@ -1,0 +1,128 @@
+secrets:
+  db_username:
+    external: true
+  db_password:
+    external: true
+  rabbitmq_host:
+    external: true
+  rabbitmq_username:
+    external: true
+  rabbitmq_password:
+    external: true
+  jwt_secret:
+    external: true
+  stripe_secret_key:
+    external: true
+  stripe_webhook_secret:
+    external: true
+  mail_host:
+    external: true
+  mail_username:
+    external: true
+  mail_password:
+    external: true
+  mail_from:
+    external: true
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: auth_payment_db
+      POSTGRES_USER_FILE: /run/secrets/db_username
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_username
+      - db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    secrets:
+      - rabbitmq_username
+      - rabbitmq_password
+    entrypoint: >
+      sh -c "export RABBITMQ_DEFAULT_USER=$$(cat /run/secrets/rabbitmq_username)
+      && export RABBITMQ_DEFAULT_PASS=$$(cat /run/secrets/rabbitmq_password)
+      && docker-entrypoint.sh rabbitmq-server"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  auth-payment-service:
+    image: ${REGISTRY}/auth-payment-service:${TAG:-latest}
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: auth_payment_db
+      RABBITMQ_PORT: 5672
+      JWT_EXPIRATION: 300000
+      REFRESH_JWT_EXPIRATION: 86400000
+    secrets:
+      - db_username
+      - db_password
+      - rabbitmq_host
+      - rabbitmq_username
+      - rabbitmq_password
+      - jwt_secret
+      - stripe_secret_key
+      - stripe_webhook_secret
+    ports:
+      - "8081:8081"
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  notification-service:
+    image: ${REGISTRY}/notification-service:${TAG:-latest}
+    environment:
+      RABBITMQ_PORT: 5672
+      MAIL_PORT: 587
+    secrets:
+      - rabbitmq_host
+      - rabbitmq_username
+      - rabbitmq_password
+      - mail_host
+      - mail_username
+      - mail_password
+      - mail_from
+    ports:
+      - "8082:8082"
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+networks:
+  backend:
+    driver: overlay
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
