@@ -1,5 +1,7 @@
 .env
 .idea/
+hs_err_pid*.log
+replay_pid*.log
 **/src/main/resources/application.yaml
 !**/src/main/resources/application.yaml.example
 **/target/
