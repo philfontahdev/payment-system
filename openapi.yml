@@ -1,0 +1,302 @@
+openapi: 3.0.3
+info:
+  title: Payment System API
+  description: Authentication and Stripe payment processing API
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8081
+    description: Local (docker-compose)
+
+tags:
+  - name: Auth
+    description: Register and login
+  - name: Payments
+    description: Create payments and receive Stripe webhooks
+
+paths:
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: john@example.com
+              password: secret123
+              firstName: John
+              lastName: Doe
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseAuth'
+              example:
+                timestamp: "2024-01-15T10:30:00"
+                status: 201
+                message: User registered successfully
+                data:
+                  token: eyJhbGciOiJIUzI1NiJ9...
+                  refreshToken: eyJhbGciOiJIUzI1NiJ9...
+                  tokenType: Bearer
+                  expiresIn: 300000
+                  user:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    email: john@example.com
+                    firstName: John
+                    lastName: Doe
+                    role: USER
+        '400':
+          description: Validation error (missing fields, invalid email, short password)
+        '409':
+          description: Email already in use
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and get a JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: john@example.com
+              password: secret123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseAuth'
+              example:
+                timestamp: "2024-01-15T10:30:00"
+                status: 200
+                message: Success
+                data:
+                  token: eyJhbGciOiJIUzI1NiJ9...
+                  refreshToken: eyJhbGciOiJIUzI1NiJ9...
+                  tokenType: Bearer
+                  expiresIn: 300000
+                  user:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    email: john@example.com
+                    firstName: John
+                    lastName: Doe
+                    role: USER
+        '401':
+          description: Invalid credentials
+
+  /api/payments/checkout:
+    post:
+      tags: [Payments]
+      summary: Create a Stripe payment intent
+      description: >
+        Creates a PaymentIntent on Stripe and stores a local payment record.
+        Amount is in the smallest currency unit (cents). Minimum is 50 (= $0.50).
+        Returns a `clientSecret` which your frontend uses with the Stripe SDK to confirm payment.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+            example:
+              amount: 2000
+              currency: usd
+              description: Order #1234
+      responses:
+        '200':
+          description: Payment intent created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponsePayment'
+              example:
+                timestamp: "2024-01-15T10:30:00"
+                status: 200
+                message: Payment initiated successfully
+                data:
+                  paymentId: 550e8400-e29b-41d4-a716-446655440001
+                  stripePaymentIntentId: pi_3OqX2BJH...
+                  clientSecret: pi_3OqX2BJH..._secret_...
+                  amount: 20.00
+                  currency: usd
+                  status: PENDING
+        '400':
+          description: Validation error (amount below 50, currency not 3 chars)
+        '401':
+          description: Missing or invalid JWT token
+        '404':
+          description: Authenticated user not found
+
+  /api/payments/webhook:
+    post:
+      tags: [Payments]
+      summary: Stripe webhook receiver
+      description: >
+        Called by Stripe — not by your frontend or API clients.
+        Handles `payment_intent.succeeded`, `payment_intent.payment_failed`, and `payment_intent.canceled`.
+        Requires a valid `Stripe-Signature` header.
+      parameters:
+        - in: header
+          name: Stripe-Signature
+          required: true
+          schema:
+            type: string
+          description: Webhook signature provided by Stripe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: string
+              description: Raw Stripe event payload
+      responses:
+        '200':
+          description: Event processed
+        '400':
+          description: Invalid signature or unprocessable payload
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, lastName]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+          maxLength: 64
+        firstName:
+          type: string
+        lastName:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    PaymentRequest:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: integer
+          format: int64
+          minimum: 50
+          description: Amount in smallest currency unit (e.g. cents). 2000 = $20.00
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 currency code (e.g. usd, eur, gbp)
+        description:
+          type: string
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          example: USER
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          example: 300000
+        user:
+          $ref: '#/components/schemas/UserResponse'
+
+    PaymentResponse:
+      type: object
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+        stripePaymentIntentId:
+          type: string
+        clientSecret:
+          type: string
+          description: Pass this to the Stripe frontend SDK to confirm payment
+        amount:
+          type: number
+          example: 20.00
+        currency:
+          type: string
+          example: usd
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED, CANCELED]
+
+    ApiResponseAuth:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/AuthResponse'
+
+    ApiResponsePayment:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/PaymentResponse'
