@@ -3,11 +3,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_DB: auth_payment_db
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,29 +13,34 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - backend
+    restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     ports:
-      - "5672:5672"
       - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - backend
+    restart: unless-stopped
 
   auth-payment-service:
-    build: ./auth-payment-service
-    ports:
-      - "8081:8081"
+    image: ghcr.io/philfontahdev/auth-payment-service:latest
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: ${DB_NAME}
+      DB_NAME: auth_payment_db
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       RABBITMQ_HOST: rabbitmq
@@ -45,33 +48,46 @@ services:
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION: ${JWT_EXPIRATION}
-      REFRESH_JWT_EXPIRATION: ${REFRESH_JWT_EXPIRATION}
+      JWT_EXPIRATION: 300000
+      REFRESH_JWT_EXPIRATION: 86400000
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+    ports:
+      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
 
   notification-service:
-    build: ./notification-service
-    ports:
-      - "8082:8082"
+    image: ghcr.io/philfontahdev/notification-service:latest
     environment:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       MAIL_HOST: ${MAIL_HOST}
-      MAIL_PORT: ${MAIL_PORT}
+      MAIL_PORT: 587
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_FROM: ${MAIL_FROM}
+    ports:
+      - "8082:8082"
     depends_on:
       rabbitmq:
         condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+
+networks:
+  backend:
+    driver: bridge
 
 volumes:
   postgres_data:
+  rabbitmq_data:
