@@ -6,6 +6,7 @@ load_secret() {
     local var="$1"
     local file="/run/secrets/$2"
     [ -f "$file" ] && export "$var"="$(cat "$file")"
+    return 0
 }
 
 load_secret RABBITMQ_HOST     rabbitmq_host
